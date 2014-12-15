@@ -1,4 +1,24 @@
+/*
+ *  linux/fs/exec.c
+ *
+ *  (C) 1991  Linus Torvalds
+ */
+
+/*
+ * #!-checking implemented by tytso.
+ */
+
+/*
+ * Demand-loading implemented 01.12.91 - no need to read anything but
+ * the header into memory. The inode of the executable is put into
+ * "current->executable", and page faults do the actual loading. Clean.
+ *
+ * Once more I can proudly say that linux stood up to being changed: it
+ * was less than 2 hours work to get demand-loading completely implemented.
+ */
+
 #include <errno.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <a.out.h>
 
@@ -17,96 +37,6 @@ extern int sys_close(int fd);
  * a maximum env+arg of 128kB !
  */
 #define MAX_ARG_PAGES 32
-
-#define cp_block(from,to) \
-__asm__("pushl $0x10\n\t" \
-	"pushl $0x17\n\t" \
-	"pop %%es\n\t" \
-	"cld\n\t" \
-	"rep\n\t" \
-	"movsl\n\t" \
-	"pop %%es" \
-	::"c" (BLOCK_SIZE/4),"S" (from),"D" (to) \
-	:"cx","di","si")
-
-/*
- * read_head() reads blocks 1-6 (not 0). Block 0 has already been
- * read for header information.
- */
-int read_head(struct m_inode * inode,int blocks)
-{
-	struct buffer_head * bh;
-	int count;
-
-	if (blocks>6)
-		blocks=6;
-	for(count = 0 ; count<blocks ; count++) {
-		if (!inode->i_zone[count+1])
-			continue;
-		if (!(bh=bread(inode->i_dev,inode->i_zone[count+1])))
-			return -1;
-		cp_block(bh->b_data,count*BLOCK_SIZE);
-		brelse(bh);
-	}
-	return 0;
-}
-
-int read_ind(int dev,int ind,long size,unsigned long offset)
-{
-	struct buffer_head * ih, * bh;
-	unsigned short * table,block;
-
-	if (size<=0)
-		panic("size<=0 in read_ind");
-	if (size>512*BLOCK_SIZE)
-		size=512*BLOCK_SIZE;
-	if (!ind)
-		return 0;
-	if (!(ih=bread(dev,ind)))
-		return -1;
-	table = (unsigned short *) ih->b_data;
-	while (size>0) {
-		if (block=*(table++))
-			if (!(bh=bread(dev,block))) {
-				brelse(ih);
-				return -1;
-			} else {
-				cp_block(bh->b_data,offset);
-				brelse(bh);
-			}
-		size -= BLOCK_SIZE;
-		offset += BLOCK_SIZE;
-	}
-	brelse(ih);
-	return 0;
-}
-
-/*
- * read_area() reads an area into %fs:mem.
- */
-int read_area(struct m_inode * inode,long size)
-{
-	struct buffer_head * dind;
-	unsigned short * table;
-	int i,count;
-
-	if ((i=read_head(inode,(size+BLOCK_SIZE-1)/BLOCK_SIZE)) ||
-	    (size -= BLOCK_SIZE*6)<=0)
-		return i;
-	if ((i=read_ind(inode->i_dev,inode->i_zone[7],size,BLOCK_SIZE*6)) ||
-	    (size -= BLOCK_SIZE*512)<=0)
-		return i;
-	if (!(i=inode->i_zone[8]))
-		return 0;
-	if (!(dind = bread(inode->i_dev,i)))
-		return -1;
-	table = (unsigned short *) dind->b_data;
-	for(count=0 ; count<512 ; count++)
-		if ((i=read_ind(inode->i_dev,*(table++),size,
-		    BLOCK_SIZE*(518+count))) || (size -= BLOCK_SIZE*512)<=0)
-			return i;
-	panic("Impossibly long executable");
-}
 
 /*
  * create_tables() parses the env- and arg-strings in new user
@@ -158,36 +88,66 @@ static int count(char ** argv)
  * 'copy_string()' copies argument/envelope strings from user
  * memory to free pages in kernel mem. These are in a format ready
  * to be put directly into the top of new user memory.
+ *
+ * Modified by TYT, 11/24/91 to add the from_kmem argument, which specifies
+ * whether the string and the string array are from user or kernel segments:
+ * 
+ * from_kmem     argv *        argv **
+ *    0          user space    user space
+ *    1          kernel space  user space
+ *    2          kernel space  kernel space
+ * 
+ * We do this by playing games with the fs segment register.  Since it
+ * it is expensive to load a segment register, we try to avoid calling
+ * set_fs() unless we absolutely have to.
  */
 static unsigned long copy_strings(int argc,char ** argv,unsigned long *page,
-		unsigned long p)
+		unsigned long p, int from_kmem)
 {
-	int len,i;
-	char *tmp;
+	char *tmp, *pag;
+	int len, offset = 0;
+	unsigned long old_fs, new_fs;
 
+	if (!p)
+		return 0;	/* bullet-proofing */
+	new_fs = get_ds();
+	old_fs = get_fs();
+	if (from_kmem==2)
+		set_fs(new_fs);
 	while (argc-- > 0) {
-		if (!(tmp = (char *)get_fs_long(((unsigned long *) argv)+argc)))
+		if (from_kmem == 1)
+			set_fs(new_fs);
+		if (!(tmp = (char *)get_fs_long(((unsigned long *)argv)+argc)))
 			panic("argc is wrong");
+		if (from_kmem == 1)
+			set_fs(old_fs);
 		len=0;		/* remember zero-padding */
 		do {
 			len++;
 		} while (get_fs_byte(tmp++));
-		if (p-len < 0)		/* this shouldn't happen - 128kB */
+		if (p-len < 0) {	/* this shouldn't happen - 128kB */
+			set_fs(old_fs);
 			return 0;
-		i = ((unsigned) (p-len)) >> 12;
-		while (i<MAX_ARG_PAGES && !page[i]) {
-			if (!(page[i]=get_free_page()))
-				return 0;
-			i++;
 		}
-		do {
-			--p;
-			if (!page[p/PAGE_SIZE])
-				panic("nonexistent page in exec.c");
-			((char *) page[p/PAGE_SIZE])[p%PAGE_SIZE] =
-				get_fs_byte(--tmp);
-		} while (--len);
+		while (len) {
+			--p; --tmp; --len;
+			if (--offset < 0) {
+				offset = p % PAGE_SIZE;
+				if (from_kmem==2)
+					set_fs(old_fs);
+				if (!(pag = (char *) page[p/PAGE_SIZE]) &&
+				    !(pag = (char *) page[p/PAGE_SIZE] =
+				      (unsigned long *) get_free_page())) 
+					return 0;
+				if (from_kmem==2)
+					set_fs(new_fs);
+
+			}
+			*(pag + offset) = get_fs_byte(tmp);
+		}
 	}
+	if (from_kmem==2)
+		set_fs(old_fs);
 	return p;
 }
 
@@ -227,7 +187,10 @@ int do_execve(unsigned long * eip,long tmp,char * filename,
 	struct exec ex;
 	unsigned long page[MAX_ARG_PAGES];
 	int i,argc,envc;
-	unsigned long p;
+	int e_uid, e_gid;
+	int retval;
+	int sh_bang = 0;
+	unsigned long p=PAGE_SIZE*MAX_ARG_PAGES-4;
 
 	if ((0xffff & eip[1]) != 0x000f)
 		panic("execve called from supervisor mode");
@@ -235,49 +198,129 @@ int do_execve(unsigned long * eip,long tmp,char * filename,
 		page[i]=0;
 	if (!(inode=namei(filename)))		/* get executables inode */
 		return -ENOENT;
+	argc = count(argv);
+	envc = count(envp);
+	
+restart_interp:
 	if (!S_ISREG(inode->i_mode)) {	/* must be regular file */
-		iput(inode);
-		return -EACCES;
+		retval = -EACCES;
+		goto exec_error2;
 	}
 	i = inode->i_mode;
-	if (current->uid && current->euid) {
-		if (current->euid == inode->i_uid)
-			i >>= 6;
-		else if (current->egid == inode->i_gid)
-			i >>= 3;
-	} else if (i & 0111)
-		i=1;
-	if (!(i & 1)) {
-		iput(inode);
-		return -ENOEXEC;
+	e_uid = (i & S_ISUID) ? inode->i_uid : current->euid;
+	e_gid = (i & S_ISGID) ? inode->i_gid : current->egid;
+	if (current->euid == inode->i_uid)
+		i >>= 6;
+	else if (current->egid == inode->i_gid)
+		i >>= 3;
+	if (!(i & 1) &&
+	    !((inode->i_mode & 0111) && suser())) {
+		retval = -ENOEXEC;
+		goto exec_error2;
 	}
 	if (!(bh = bread(inode->i_dev,inode->i_zone[0]))) {
-		iput(inode);
-		return -EACCES;
+		retval = -EACCES;
+		goto exec_error2;
 	}
 	ex = *((struct exec *) bh->b_data);	/* read exec-header */
+	if ((bh->b_data[0] == '#') && (bh->b_data[1] == '!') && (!sh_bang)) {
+		/*
+		 * This section does the #! interpretation.
+		 * Sorta complicated, but hopefully it will work.  -TYT
+		 */
+
+		char buf[1023], *cp, *interp, *i_name, *i_arg;
+		unsigned long old_fs;
+
+		strncpy(buf, bh->b_data+2, 1022);
+		brelse(bh);
+		iput(inode);
+		buf[1022] = '\0';
+		if (cp = strchr(buf, '\n')) {
+			*cp = '\0';
+			for (cp = buf; (*cp == ' ') || (*cp == '\t'); cp++);
+		}
+		if (!cp || *cp == '\0') {
+			retval = -ENOEXEC; /* No interpreter name found */
+			goto exec_error1;
+		}
+		interp = i_name = cp;
+		i_arg = 0;
+		for ( ; *cp && (*cp != ' ') && (*cp != '\t'); cp++) {
+ 			if (*cp == '/')
+				i_name = cp+1;
+		}
+		if (*cp) {
+			*cp++ = '\0';
+			i_arg = cp;
+		}
+		/*
+		 * OK, we've parsed out the interpreter name and
+		 * (optional) argument.
+		 */
+		if (sh_bang++ == 0) {
+			p = copy_strings(envc, envp, page, p, 0);
+			p = copy_strings(--argc, argv+1, page, p, 0);
+		}
+		/*
+		 * Splice in (1) the interpreter's name for argv[0]
+		 *           (2) (optional) argument to interpreter
+		 *           (3) filename of shell script
+		 *
+		 * This is done in reverse order, because of how the
+		 * user environment and arguments are stored.
+		 */
+		p = copy_strings(1, &filename, page, p, 1);
+		argc++;
+		if (i_arg) {
+			p = copy_strings(1, &i_arg, page, p, 2);
+			argc++;
+		}
+		p = copy_strings(1, &i_name, page, p, 2);
+		argc++;
+		if (!p) {
+			retval = -ENOMEM;
+			goto exec_error1;
+		}
+		/*
+		 * OK, now restart the process with the interpreter's inode.
+		 */
+		old_fs = get_fs();
+		set_fs(get_ds());
+		if (!(inode=namei(interp))) { /* get executables inode */
+			set_fs(old_fs);
+			retval = -ENOENT;
+			goto exec_error1;
+		}
+		set_fs(old_fs);
+		goto restart_interp;
+	}
 	brelse(bh);
 	if (N_MAGIC(ex) != ZMAGIC || ex.a_trsize || ex.a_drsize ||
 		ex.a_text+ex.a_data+ex.a_bss>0x3000000 ||
 		inode->i_size < ex.a_text+ex.a_data+ex.a_syms+N_TXTOFF(ex)) {
-		iput(inode);
-		return -ENOEXEC;
+		retval = -ENOEXEC;
+		goto exec_error2;
 	}
-	if (N_TXTOFF(ex) != BLOCK_SIZE)
-		panic("N_TXTOFF != BLOCK_SIZE. See a.out.h.");
-	argc = count(argv);
-	envc = count(envp);
-	p = copy_strings(envc,envp,page,PAGE_SIZE*MAX_ARG_PAGES-4);
-	p = copy_strings(argc,argv,page,p);
-	if (!p) {
-		for (i=0 ; i<MAX_ARG_PAGES ; i++)
-			free_page(page[i]);
-		iput(inode);
-		return -1;
+	if (N_TXTOFF(ex) != BLOCK_SIZE) {
+		printk("%s: N_TXTOFF != BLOCK_SIZE. See a.out.h.", filename);
+		retval = -ENOEXEC;
+		goto exec_error2;
+	}
+	if (!sh_bang) {
+		p = copy_strings(envc,envp,page,p,0);
+		p = copy_strings(argc,argv,page,p,0);
+		if (!p) {
+			retval = -ENOMEM;
+			goto exec_error2;
+		}
 	}
 /* OK, This is the point of no return */
+	if (current->executable)
+		iput(current->executable);
+	current->executable = inode;
 	for (i=0 ; i<32 ; i++)
-		current->sig_fn[i] = NULL;
+		current->sigaction[i].sa_handler = NULL;
 	for (i=0 ; i<NR_OPEN ; i++)
 		if ((current->close_on_exec>>i)&1)
 			sys_close(i);
@@ -293,14 +336,18 @@ int do_execve(unsigned long * eip,long tmp,char * filename,
 		(current->end_data = ex.a_data +
 		(current->end_code = ex.a_text));
 	current->start_stack = p & 0xfffff000;
-	i = read_area(inode,ex.a_text+ex.a_data);
-	iput(inode);
-	if (i<0)
-		sys_exit(-1);
+	current->euid = e_uid;
+	current->egid = e_gid;
 	i = ex.a_text+ex.a_data;
 	while (i&0xfff)
 		put_fs_byte(0,(char *) (i++));
 	eip[0] = ex.a_entry;		/* eip, magic happens :-) */
 	eip[3] = p;			/* stack pointer */
 	return 0;
+exec_error2:
+	iput(inode);
+exec_error1:
+	for (i=0 ; i<MAX_ARG_PAGES ; i++)
+		free_page(page[i]);
+	return(retval);
 }

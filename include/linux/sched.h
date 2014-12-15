@@ -10,6 +10,7 @@
 #include <linux/head.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
+#include <signal.h>
 
 #if (NR_OPEN > 32)
 #error "Currently the close-on-exec-flags are in one word, max 32 files/proc"
@@ -26,7 +27,7 @@
 #endif
 
 extern int copy_page_tables(unsigned long from, unsigned long to, long size);
-extern int free_page_tables(unsigned long from, long size);
+extern int free_page_tables(unsigned long from, unsigned long size);
 
 extern void sched_init(void);
 extern void schedule(void);
@@ -80,11 +81,11 @@ struct task_struct {
 	long counter;
 	long priority;
 	long signal;
-	fn_ptr sig_restorer;
-	fn_ptr sig_fn[32];
+	struct sigaction sigaction[32];
+	long blocked;	/* bitmap of masked signals */
 /* various fields */
 	int exit_code;
-	unsigned long end_code,end_data,brk,start_stack;
+	unsigned long start_code,end_code,end_data,brk,start_stack;
 	long pid,father,pgrp,session,leader;
 	unsigned short uid,euid,suid;
 	unsigned short gid,egid,sgid;
@@ -96,6 +97,7 @@ struct task_struct {
 	unsigned short umask;
 	struct m_inode * pwd;
 	struct m_inode * root;
+	struct m_inode * executable;
 	unsigned long close_on_exec;
 	struct file * filp[NR_OPEN];
 /* ldt for this task 0 - zero 1 - cs 2 - ds&ss */
@@ -110,13 +112,13 @@ struct task_struct {
  */
 #define INIT_TASK \
 /* state etc */	{ 0,15,15, \
-/* signals */	0,NULL,{(fn_ptr) 0,}, \
-/* ec,brk... */	0,0,0,0,0, \
+/* signals */	0,{{},},0, \
+/* ec,brk... */	0,0,0,0,0,0, \
 /* pid etc.. */	0,-1,0,0,0, \
 /* uid etc */	0,0,0,0,0,0, \
 /* alarm */	0,0,0,0,0,0, \
 /* math */	0, \
-/* fs info */	-1,0133,NULL,NULL,0, \
+/* fs info */	-1,0022,NULL,NULL,NULL,0, \
 /* filp */	{NULL,}, \
 	{ \
 		{0,0}, \
@@ -139,6 +141,7 @@ extern long startup_time;
 
 #define CURRENT_TIME (startup_time+jiffies/HZ)
 
+extern void add_timer(long jiffies, void (*fn)(void));
 extern void sleep_on(struct task_struct ** p);
 extern void interruptible_sleep_on(struct task_struct ** p);
 extern void wake_up(struct task_struct ** p);
@@ -169,15 +172,15 @@ __asm__("str %%ax\n\t" \
 struct {long a,b;} __tmp; \
 __asm__("cmpl %%ecx,_current\n\t" \
 	"je 1f\n\t" \
-	"xchgl %%ecx,_current\n\t" \
 	"movw %%dx,%1\n\t" \
+	"xchgl %%ecx,_current\n\t" \
 	"ljmp %0\n\t" \
-	"cmpl %%ecx,%2\n\t" \
+	"cmpl %%ecx,_last_task_used_math\n\t" \
 	"jne 1f\n\t" \
 	"clts\n" \
 	"1:" \
 	::"m" (*&__tmp.a),"m" (*&__tmp.b), \
-	"m" (last_task_used_math),"d" _TSS(n),"c" ((long) task[n])); \
+	"d" (_TSS(n)),"c" ((long) task[n])); \
 }
 
 #define PAGE_ALIGN(n) (((n)+0xfff)&0xfffff000)
