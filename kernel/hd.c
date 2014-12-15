@@ -192,7 +192,7 @@ static void hd_out(unsigned int drive,unsigned int nsect,unsigned int sect,
 	outb_p(sect,++port);
 	outb_p(cyl,++port);
 	outb_p(cyl>>8,++port);
-	outb_p(0xA0|(drive<<4)|head,++port);
+	outb_p(0xB0|(drive<<4)|head,++port);
 	outb(cmd,++port);
 }
 
@@ -221,7 +221,7 @@ static void reset_controller(void)
 	for(i = 0; i < 10000 && drive_busy(); i++) /* nothing */;
 	if (drive_busy())
 		printk("HD-controller still busy\n\r");
-	if((i = inb(ERR_STAT)) != 1)
+	if((i = inb(HD_STATUS)) & ERR_STAT)
 		printk("HD-controller reset failed: %02x\n\r",i);
 }
 
@@ -256,11 +256,18 @@ static void read_intr(void)
 		bad_rw_intr();
 		return;
 	}
-	port_read(HD_DATA,this_request->bh->b_data+
-		512*(this_request->nsector&1),256);
-	this_request->errors = 0;
-	if (--this_request->nsector)
+	
+	if (this_request->nsector==2){
+		this_request->nsector--;
+		port_read(HD_DATA,this_request->bh->b_data,256);
+	}
+	else{
+		port_read(HD_DATA,this_request->bh->b_data+512,256);
 		return;
+	}
+
+	this_request->errors = 0;
+
 	this_request->bh->b_uptodate = 1;
 	this_request->bh->b_dirt = 0;
 	wake_up(&wait_for_request);

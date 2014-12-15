@@ -14,24 +14,12 @@
  * but easier. We don't use BIOS for anything else, why should
  * we get HD-type from it? Get these values from Reference Guide.
  */
-
-#if HARD_DISK_TYPE == 17
-#define _CYL	977
-#define _HEAD	5
-#define __WPCOM	300
-#define _LZONE	977
-#define _SECT	17
+#define _CYL	1024
+#define _HEAD	4
+#define __WPCOM	(-1)		/*not used ?*/
+#define _LZONE	1024		/*same as _CYL ?*/
+#define _SECT	20
 #define _CTL	0
-#elif HARD_DISK_TYPE == 18
-#define _CYL	977
-#define _HEAD	7
-#define __WPCOM	(-1)
-#define _LZONE	977
-#define _SECT	17
-#define _CTL	0
-#else
-#error Define HARD_DISK_TYPE and parameters, add your own entries as well
-#endif
 
 /* Controller wants just wp-com/4 */
 #if __WPCOM >= 0
@@ -55,14 +43,14 @@
 #define HD_CMD		0x3f6
 
 /* Bits of HD_STATUS */
-#define ERR_STAT	0x01
-#define INDEX_STAT	0x02
-#define ECC_STAT	0x04	/* Corrected error */
-#define DRQ_STAT	0x08
-#define SEEK_STAT	0x10
-#define WRERR_STAT	0x20
-#define READY_STAT	0x40
-#define BUSY_STAT	0x80
+#define ERR_STAT	0x01	/*0 => no error */
+#define INDEX_STAT	0x02	/*not used in new controller*/
+#define ECC_STAT	0x04	/*1 => Corrected error */
+#define DRQ_STAT	0x08	/*0=> controller not waiting for data. 1 => waiting*/
+#define SEEK_STAT	0x10	/*0=> searching. 1=> end of search. waiting for read or write*/
+#define WRERR_STAT	0x20	/*1=> write error.*/
+#define READY_STAT	0x40	/*1=> ready*/
+#define BUSY_STAT	0x80	/*1 => busy*/
 
 /* Values for HD_COMMAND */
 #define WIN_RESTORE		0x10
@@ -78,7 +66,7 @@
 /* Bits for HD_ERROR */
 #define MARK_ERR	0x01	/* Bad address mark ? */
 #define TRK0_ERR	0x02	/* couldn't find track 0 */
-#define ABRT_ERR	0x04	/* ? */
+#define ABRT_ERR	0x04	/* command stopped */
 #define ID_ERR		0x10	/* ? */
 #define ECC_ERR		0x40	/* ? */
 #define	BBD_ERR		0x80	/* ? */

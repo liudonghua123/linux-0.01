@@ -3,7 +3,7 @@ AS	=gas
 CC	=gcc
 LD	=gld
 CFLAGS	=-Wall -O -fstrength-reduce -fcombine-regs -fomit-frame-pointer \
-	-mstring-insns -nostdinc -I../include
+	 -nostdinc -I../include
 CPP	=gcc -E -nostdinc -I../include
 
 .c.s:

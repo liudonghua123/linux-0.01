@@ -15,7 +15,7 @@ struct exec {
 };
 
 #ifndef N_MAGIC
-#define N_MAGIC(exec) ((exec).a_magic)
+#define N_MAGIC(exec) ((exec).a_magic & 0xffff )
 #endif
 
 #ifndef OMAGIC

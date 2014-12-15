@@ -62,6 +62,13 @@ int main(int argc, char ** argv)
 	for (i=0 ; (c=read(id,buf,sizeof buf))>0 ; i+=c )
 		if (write(1,buf,c)!=c)
 			die("Write call failed");
+
+	/* only needed by qemu. ( qemu may not read last sector if
+ 	 * size is < 512 bytes ) 
+ 	 */
+	memset(buf,0,512);
+	write(1,buf,512);	
+
 	close(id);
 	fprintf(stderr,"System %d bytes.\n",i);
 	return(0);

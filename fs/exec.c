@@ -267,7 +267,7 @@ int do_execve(unsigned long * eip,long tmp,char * filename,
 		panic("N_TXTOFF != BLOCK_SIZE. See a.out.h.");
 	argc = count(argv);
 	envc = count(envp);
-	p = copy_strings(envc,envp,page,PAGE_SIZE*MAX_ARG_PAGES-4);
+	p = copy_strings(envc,envp,page,PAGE_SIZE*MAX_ARG_PAGES);
 	p = copy_strings(argc,argv,page,p);
 	if (!p) {
 		for (i=0 ; i<MAX_ARG_PAGES ; i++)

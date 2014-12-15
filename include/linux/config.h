@@ -9,13 +9,7 @@
  * Don't make this bigger without making sure that there are enough page
  * directory entries (boot/head.s)
  */
-#if	defined(LINUS_HD)
 #define HIGH_MEMORY (0x800000)
-#elif	defined(LASU_HD)
-#define HIGH_MEMORY (0x400000)
-#else
-#error "must define hd"
-#endif
 
 /* End of buffer memory. Must be 0xA0000, or > 0x100000, 4096-byte aligned */
 #if (HIGH_MEMORY>=0x600000)
@@ -25,13 +19,7 @@
 #endif
 
 /* Root device at bootup. */
-#if	defined(LINUS_HD)
-#define ROOT_DEV 0x306
-#elif	defined(LASU_HD)
-#define ROOT_DEV 0x302
-#else
-#error "must define HD"
-#endif
+#define ROOT_DEV 0x301
 
 /*
  * HD type. If 2, put 2 structures with a comma. If just 1, put
@@ -42,12 +30,7 @@
  * more than 8 heads, but that is what the bios-listings seem to imply. I
  * just love not having a manual.
  */
-#if	defined(LASU_HD)
-#define HD_TYPE { 7,35,915,65536,920,0 }
-#elif	defined(LINUS_HD)
-#define HD_TYPE { 5,17,980,300,980,0 },{ 5,17,980,300,980,0 }
-#else
-#error "must define a hard-disk type"
-#endif
+
+#define HD_TYPE { 4,20,1024,0,4,0 }
 
 #endif
