@@ -26,7 +26,7 @@ __asm__("movl %%eax,%%cr3"::"a" (0))
 #endif
 
 #define copy_page(from,to) \
-__asm__("cld ; rep ; movsl"::"S" (from),"D" (to),"c" (1024):"cx","di","si")
+__asm__("cld ; rep ; movsl"::"S" (from),"D" (to),"c" (1024)/*:"cx","di","si"*/)
 
 static unsigned short mem_map [ PAGING_PAGES ] = {0,};
 
@@ -36,7 +36,7 @@ static unsigned short mem_map [ PAGING_PAGES ] = {0,};
  */
 unsigned long get_free_page(void)
 {
-register unsigned long __res asm("ax");
+register unsigned long __res;// asm("ax");
 
 __asm__("std ; repne ; scasw\n\t"
 	"jne 1f\n\t"
@@ -52,7 +52,7 @@ __asm__("std ; repne ; scasw\n\t"
 	:"=a" (__res)
 	:"0" (0),"i" (LOW_MEM),"c" (PAGING_PAGES),
 	"D" (mem_map+PAGING_PAGES-1)
-	:"di","cx","dx");
+	:/*"di","cx",*/"dx");
 return __res;
 }
 
@@ -238,7 +238,7 @@ void do_no_page(unsigned long error_code,unsigned long address)
 {
 	unsigned long tmp;
 
-	if (tmp=get_free_page())
+	if ((tmp=get_free_page()))
 		if (put_page(tmp,address))
 			return;
 	do_exit(SIGSEGV);

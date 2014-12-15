@@ -63,7 +63,7 @@ static int match(int len,const char * name,struct dir_entry * de)
 		"setz %%al"
 		:"=a" (same)
 		:"0" (0),"S" ((long) name),"D" ((long) de->name),"c" (len)
-		:"cx","di","si");
+		/*:"cx","di","si"*/);
 	return same;
 }
 
@@ -255,7 +255,7 @@ static struct m_inode * dir_namei(const char * pathname,
 	if (!(dir = get_dir(pathname)))
 		return NULL;
 	basename = pathname;
-	while (c=get_fs_byte(pathname++))
+	while ((c=get_fs_byte(pathname++)))
 		if (c=='/')
 			basename=pathname;
 	*namelen = pathname-basename-1;

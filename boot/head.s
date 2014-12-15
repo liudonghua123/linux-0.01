@@ -5,16 +5,17 @@
  * the page directory will exist. The startup code will be overwritten by
  * the page directory.
  */
+.code32
 .text
-.globl _idt,_gdt,_pg_dir
-_pg_dir:
+.globl idt,gdt,pg_dir,startup_32
+pg_dir:
 startup_32:
 	movl $0x10,%eax
 	mov %ax,%ds
 	mov %ax,%es
 	mov %ax,%fs
 	mov %ax,%gs
-	lss _stack_start,%esp
+	lss stack_start,%esp
 	call setup_idt
 	call setup_gdt
 	movl $0x10,%eax		# reload all the segment registers
@@ -22,7 +23,7 @@ startup_32:
 	mov %ax,%es		# reloaded in 'setup_gdt'
 	mov %ax,%fs
 	mov %ax,%gs
-	lss _stack_start,%esp
+	lss stack_start,%esp
 	xorl %eax,%eax
 1:	incl %eax		# check that A20 really IS enabled
 	movl %eax,0x000000
@@ -53,7 +54,7 @@ setup_idt:
 	movw %dx,%ax		/* selector = 0x0008 = cs */
 	movw $0x8E00,%dx	/* interrupt gate - dpl=0, present */
 
-	lea _idt,%edi
+	lea idt,%edi
 	mov $256,%ecx
 rp_sidt:
 	movl %eax,(%edi)
@@ -95,7 +96,7 @@ after_page_tables:
 	pushl $0
 	pushl $0
 	pushl $L6		# return address for main, if it decides to.
-	pushl $_main
+	pushl $main
 	jmp setup_paging
 L6:
 	jmp L6			# main should never return here, but
@@ -139,8 +140,8 @@ setup_paging:
 	xorl %eax,%eax
 	xorl %edi,%edi			/* pg_dir is at 0x000 */
 	cld;rep;stosl
-	movl $pg0+7,_pg_dir		/* set present bit/user r/w */
-	movl $pg1+7,_pg_dir+4		/*  --------- " " --------- */
+	movl $pg0+7,pg_dir		/* set present bit/user r/w */
+	movl $pg1+7,pg_dir+4		/*  --------- " " --------- */
 	movl $pg1+4092,%edi
 	movl $0x7ff007,%eax		/*  8Mb - 4096 + 7 (r/w user,p) */
 	std
@@ -158,17 +159,17 @@ setup_paging:
 .word 0
 idt_descr:
 	.word 256*8-1		# idt contains 256 entries
-	.long _idt
+	.long idt
 .align 2
 .word 0
 gdt_descr:
 	.word 256*8-1		# so does gdt (not that that's any
-	.long _gdt		# magic number, but it works for me :^)
+	.long gdt		# magic number, but it works for me :^)
 
-	.align 3
-_idt:	.fill 256,8,0		# idt is uninitialized
+	.align 8
+idt:	.fill 256,8,0		# idt is uninitialized
 
-_gdt:	.quad 0x0000000000000000	/* NULL descriptor */
+gdt:	.quad 0x0000000000000000	/* NULL descriptor */
 	.quad 0x00c09a00000007ff	/* 8Mb */
 	.quad 0x00c09200000007ff	/* 8Mb */
 	.quad 0x0000000000000000	/* TEMPORARY - don't use */

@@ -77,7 +77,7 @@ static blk_fn rd_blk[]={
 
 void ll_rw_block(int rw, struct buffer_head * bh)
 {
-	blk_fn blk_addr;
+	blk_fn blk_addr=NULL;
 	unsigned int major;
 
 	if ((major=MAJOR(bh->b_dev)) >= NR_BLK_DEV || !(blk_addr=rd_blk[major]))

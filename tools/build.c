@@ -3,6 +3,7 @@
 #include <sys/types.h>	/* unistd.h needs this */
 #include <unistd.h>	/* contains read/write */
 #include <fcntl.h>
+#include <string.h>
 
 #define MINIX_HEADER 32
 #define GCC_HEADER 1024
@@ -55,10 +56,10 @@ int main(int argc, char ** argv)
 	
 	if ((id=open(argv[2],O_RDONLY,0))<0)
 		die("Unable to open 'system'");
-	if (read(id,buf,GCC_HEADER) != GCC_HEADER)
-		die("Unable to read header of 'system'");
-	if (((long *) buf)[5] != 0)
-		die("Non-GCC header of 'system'");
+//	if (read(id,buf,GCC_HEADER) != GCC_HEADER)
+//		die("Unable to read header of 'system'");
+//	if (((long *) buf)[5] != 0)
+//		die("Non-GCC header of 'system'");
 	for (i=0 ; (c=read(id,buf,sizeof buf))>0 ; i+=c )
 		if (write(1,buf,c)!=c)
 			die("Write call failed");

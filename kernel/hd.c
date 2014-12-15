@@ -50,9 +50,9 @@ static struct hd_request {
 } request[NR_REQUEST];
 
 #define IN_ORDER(s1,s2) \
-((s1)->hd<(s2)->hd || (s1)->hd==(s2)->hd && \
-((s1)->cyl<(s2)->cyl || (s1)->cyl==(s2)->cyl && \
-((s1)->head<(s2)->head || (s1)->head==(s2)->head && \
+(((s1)->hd<(s2)->hd || (s1)->hd==(s2)->hd) && \
+(((s1)->cyl<(s2)->cyl || (s1)->cyl==(s2)->cyl) && \
+(((s1)->head<(s2)->head || (s1)->head==(s2)->head) && \
 ((s1)->sector<(s2)->sector))))
 
 static struct hd_request * this_request = NULL;
@@ -66,10 +66,10 @@ static void rw_abs_hd(int rw,unsigned int nr,unsigned int sec,unsigned int head,
 void hd_init(void);
 
 #define port_read(port,buf,nr) \
-__asm__("cld;rep;insw"::"d" (port),"D" (buf),"c" (nr):"cx","di")
+__asm__("cld;rep;insw"::"d" (port),"D" (buf),"c" (nr)/*:"cx","di"*/)
 
 #define port_write(port,buf,nr) \
-__asm__("cld;rep;outsw"::"d" (port),"S" (buf),"c" (nr):"cx","si")
+__asm__("cld;rep;outsw"::"d" (port),"S" (buf),"c" (nr)/*:"cx","si"*/)
 
 extern void hd_interrupt(void);
 
@@ -205,7 +205,7 @@ static int drive_busy(void)
 			break;
 	i = inb(HD_STATUS);
 	i &= BUSY_STAT | READY_STAT | SEEK_STAT;
-	if (i == READY_STAT | SEEK_STAT)
+	if (i == (READY_STAT | SEEK_STAT))
 		return(0);
 	printk("HD controller times out\n\r");
 	return(1);

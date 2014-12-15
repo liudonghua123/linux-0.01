@@ -7,7 +7,7 @@
 
 /* set_bit uses setb, as gas doesn't recognize setc */
 #define set_bit(bitnr,addr) ({ \
-register int __res __asm__("ax"); \
+register int __res;/* __asm__("ax");*/ \
 __asm__("bt %2,%3;setb %%al":"=a" (__res):"a" (0),"r" (bitnr),"m" (*(addr))); \
 __res; })
 
@@ -39,12 +39,12 @@ struct super_block * do_mount(int dev)
 		p->s_zmap[i] = NULL;
 	block=2;
 	for (i=0 ; i < p->s_imap_blocks ; i++)
-		if (p->s_imap[i]=bread(dev,block))
+		if ((p->s_imap[i]=bread(dev,block)))
 			block++;
 		else
 			break;
 	for (i=0 ; i < p->s_zmap_blocks ; i++)
-		if (p->s_zmap[i]=bread(dev,block))
+		if ((p->s_zmap[i]=bread(dev,block)))
 			block++;
 		else
 			break;

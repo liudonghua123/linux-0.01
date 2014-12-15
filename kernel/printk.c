@@ -8,6 +8,7 @@
 
 #include <linux/kernel.h>
 
+extern int vsprintf();
 static char buf[1024];
 
 int printk(const char *fmt, ...)
@@ -22,9 +23,9 @@ int printk(const char *fmt, ...)
 		"push %%ds\n\t"
 		"pop %%fs\n\t"
 		"pushl %0\n\t"
-		"pushl $_buf\n\t"
+		"pushl $buf\n\t"
 		"pushl $0\n\t"
-		"call _tty_write\n\t"
+		"call tty_write\n\t"
 		"addl $8,%%esp\n\t"
 		"popl %0\n\t"
 		"pop %%fs"

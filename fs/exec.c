@@ -18,16 +18,20 @@ extern int sys_close(int fd);
  */
 #define MAX_ARG_PAGES 32
 
-#define cp_block(from,to) \
-__asm__("pushl $0x10\n\t" \
-	"pushl $0x17\n\t" \
-	"pop %%es\n\t" \
-	"cld\n\t" \
-	"rep\n\t" \
-	"movsl\n\t" \
-	"pop %%es" \
-	::"c" (BLOCK_SIZE/4),"S" (from),"D" (to) \
-	:"cx","di","si")
+inline void cp_block(const void * from,void * to)
+{
+int d0,d1,d2;
+__asm__ __volatile("pushl $0x10\n\t"
+	"pushl $0x17\n\t"
+	"pop %%es\n\t"
+	"cld\n\t"
+	"rep\n\t"
+	"movsl\n\t"
+	"pop %%es"
+	:"=&c" (d0), "=&S" (d1), "=&D" (d2)
+	:"0" (BLOCK_SIZE/4),"1" (from),"2" (to)
+	:"memory");
+}
 
 /*
  * read_head() reads blocks 1-6 (not 0). Block 0 has already been
@@ -66,7 +70,7 @@ int read_ind(int dev,int ind,long size,unsigned long offset)
 		return -1;
 	table = (unsigned short *) ih->b_data;
 	while (size>0) {
-		if (block=*(table++))
+		if ((block=*(table++))) {
 			if (!(bh=bread(dev,block))) {
 				brelse(ih);
 				return -1;
@@ -74,6 +78,7 @@ int read_ind(int dev,int ind,long size,unsigned long offset)
 				cp_block(bh->b_data,offset);
 				brelse(bh);
 			}
+		}
 		size -= BLOCK_SIZE;
 		offset += BLOCK_SIZE;
 	}
@@ -106,6 +111,7 @@ int read_area(struct m_inode * inode,long size)
 		    BLOCK_SIZE*(518+count))) || (size -= BLOCK_SIZE*512)<=0)
 			return i;
 	panic("Impossibly long executable");
+	return -1;
 }
 
 /*
@@ -147,7 +153,7 @@ static int count(char ** argv)
 	int i=0;
 	char ** tmp;
 
-	if (tmp = argv)
+	if ((tmp = argv))
 		while (get_fs_long((unsigned long *) (tmp++)))
 			i++;
 

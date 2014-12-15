@@ -146,7 +146,7 @@ struct buffer_head * getblk(int dev,int block)
 	struct buffer_head * tmp;
 
 repeat:
-	if (tmp=get_hash_table(dev,block))
+	if ((tmp=get_hash_table(dev,block)))
 		return tmp;
 	tmp = free_list;
 	do {

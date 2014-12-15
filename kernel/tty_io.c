@@ -206,7 +206,7 @@ int tty_read(unsigned channel, char * buf, int nr)
 	minimum = (unsigned) tty->termios.c_cc[VMIN];
 	if (time && !minimum) {
 		minimum=1;
-		if (flag=(!oldalarm || time+jiffies<oldalarm))
+		if ((flag=(!oldalarm || time+jiffies<oldalarm)))
 			current->alarm = time+jiffies;
 	}
 	if (minimum>nr)
@@ -235,11 +235,12 @@ int tty_read(unsigned channel, char * buf, int nr)
 					break;
 			}
 		} while (nr>0 && !EMPTY(tty->secondary));
-		if (time && !L_CANON(tty))
-			if (flag=(!oldalarm || time+jiffies<oldalarm))
+		if (time && !L_CANON(tty)) {
+			if ((flag=(!oldalarm || time+jiffies<oldalarm)))
 				current->alarm = time+jiffies;
 			else
 				current->alarm = oldalarm;
+		}
 		if (L_CANON(tty)) {
 			if (b-buf)
 				break;
@@ -254,7 +255,7 @@ int tty_read(unsigned channel, char * buf, int nr)
 
 int tty_write(unsigned channel, char * buf, int nr)
 {
-	static cr_flag=0;
+	static int cr_flag=0;
 	struct tty_struct * tty;
 	char c, *b=buf;
 

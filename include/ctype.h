@@ -11,7 +11,7 @@
 #define _SP	0x80	/* hard space (0x20) */
 
 extern unsigned char _ctype[];
-extern char _ctmp;
+extern signed char _ctmp;
 
 #define isalnum(c) ((_ctype+1)[c]&(_U|_L|_D))
 #define isalpha(c) ((_ctype+1)[c]&(_U|_L))

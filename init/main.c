@@ -76,7 +76,7 @@ static void time_init(void)
 	startup_time = kernel_mktime(&time);
 }
 
-void main(void)		/* This really IS void, no error here. */
+int main(void)		/* This really IS void, no error here. */
 {			/* The startup routine assumes (well, ...) this */
 /*
  * Interrupts are still disabled. Do necessary setups, then
@@ -101,6 +101,8 @@ void main(void)		/* This really IS void, no error here. */
  * task can run, and if not we return here.
  */
 	for(;;) pause();
+
+	return 0;
 }
 
 static int printf(const char *fmt, ...)

@@ -9,7 +9,7 @@ extern int tty_write(unsigned minor,char * buf,int count);
 static int rw_ttyx(int rw,unsigned minor,char * buf,int count);
 static int rw_tty(int rw,unsigned minor,char * buf,int count);
 
-typedef (*crw_ptr)(int rw,unsigned minor,char * buf,int count);
+typedef int (*crw_ptr)(int rw,unsigned minor,char * buf,int count);
 
 #define NRDEVS ((sizeof (crw_table))/(sizeof (crw_ptr)))
 
