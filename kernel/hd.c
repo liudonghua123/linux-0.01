@@ -192,6 +192,7 @@ static void hd_out(unsigned int drive,unsigned int nsect,unsigned int sect,
 	outb_p(sect,++port);
 	outb_p(cyl,++port);
 	outb_p(cyl>>8,++port);
+	/*0xB0 for slave, 0xA0 for master*/
 	outb_p(0xB0|(drive<<4)|head,++port);
 	outb(cmd,++port);
 }

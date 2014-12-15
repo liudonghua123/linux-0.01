@@ -116,16 +116,14 @@ static int printf(const char *fmt, ...)
 	return i;
 }
 
-static char * argv[] = { "-",NULL };
-static char * envp[] = { "HOME=/usr/root", NULL };
+static char * argv[] = { "/bin/sh",NULL };
+static char * envp[] = { "HOME=/root","PATH=/bin","PWD=/", NULL };
 
 void init(void)
 {
 	int i,j;
 
 	setup();
-	if (!fork())
-		_exit(execve("/bin/update",NULL,NULL));
 	(void) open("/dev/tty0",O_RDWR,0);
 	(void) dup(0);
 	(void) dup(0);

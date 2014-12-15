@@ -67,3 +67,25 @@ int sys_fcntl(unsigned int fd, unsigned int cmd, unsigned long arg)
 			return -1;
 	}
 }
+
+
+int sys_fcntl64(unsigned int fd, unsigned int cmd, unsigned long arg)
+{
+	struct file * filp;
+
+	if (fd >= NR_OPEN || !(filp = current->filp[fd]))
+		return -EBADF;
+	
+	switch(cmd)
+	{
+		case F_GETLK64:
+		case F_SETLK64:
+		case F_SETLKW64:
+			return -ENOSYS;
+		
+		default:
+			return sys_fcntl(fd,cmd,arg);
+	}
+
+}
+

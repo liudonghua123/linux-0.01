@@ -3,12 +3,19 @@
 #include <linux/config.h>
 #include <linux/head.h>
 #include <linux/kernel.h>
+#include <linux/mm.h>
 #include <asm/system.h>
 
 int do_exit(long code);
 
-#define invalidate() \
-__asm__("movl %%eax,%%cr3"::"a" (0))
+inline void invalidate()
+{
+	int d0;
+	__asm__ __volatile(
+		"movl %%eax,%%cr3"
+		:"=&a" (d0)
+		:"0" (0) );
+}
 
 #if (BUFFER_END < 0x100000)
 #define LOW_MEM 0x100000
@@ -25,8 +32,16 @@ __asm__("movl %%eax,%%cr3"::"a" (0))
 #error "Won't work"
 #endif
 
-#define copy_page(from,to) \
-__asm__("cld ; rep ; movsl"::"S" (from),"D" (to),"c" (1024)/*:"cx","di","si"*/)
+inline void copy_page(unsigned long from,unsigned long to)
+{
+int d0,d1,d2;
+__asm__ __volatile("cld\n\t"
+	"rep\n\t"
+	"movsl\n\t"
+	:"=&c" (d0), "=&S" (d1), "=&D" (d2)
+	:"0" (PAGE_SIZE/4),"1" (from),"2" (to)
+	:"memory");
+}
 
 static unsigned short mem_map [ PAGING_PAGES ] = {0,};
 
@@ -36,9 +51,9 @@ static unsigned short mem_map [ PAGING_PAGES ] = {0,};
  */
 unsigned long get_free_page(void)
 {
-register unsigned long __res;// asm("ax");
+register unsigned long __res;
 
-__asm__("std ; repne ; scasw\n\t"
+__asm__ __volatile__("std ; repne ; scasw\n\t"
 	"jne 1f\n\t"
 	"movw $1,2(%%edi)\n\t"
 	"sall $12,%%ecx\n\t"
@@ -52,7 +67,7 @@ __asm__("std ; repne ; scasw\n\t"
 	:"=a" (__res)
 	:"0" (0),"i" (LOW_MEM),"c" (PAGING_PAGES),
 	"D" (mem_map+PAGING_PAGES-1)
-	:/*"di","cx",*/"dx");
+	:"dx");
 return __res;
 }
 
@@ -80,7 +95,6 @@ int free_page_tables(unsigned long from,unsigned long size)
 {
 	unsigned long *pg_table;
 	unsigned long * dir, nr;
-
 	if (from & 0x3fffff)
 		panic("free_page_tables called with wrong alignment");
 	if (!from)

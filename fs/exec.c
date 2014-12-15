@@ -1,6 +1,16 @@
+
+/*
+ *  linux/fs/exec.c
+ *
+ *  (C) 1991  Linus Torvalds
+ *  (C) 2007  Abdel Benamrouche : use elf binary instead of a.out
+ * 
+ */
+
+
 #include <errno.h>
 #include <sys/stat.h>
-#include <a.out.h>
+#include <elf.h>
 
 #include <linux/fs.h>
 #include <linux/sched.h>
@@ -18,7 +28,7 @@ extern int sys_close(int fd);
  */
 #define MAX_ARG_PAGES 32
 
-inline void cp_block(const void * from,void * to)
+inline void cp_block(const void * from,void * to, int size)
 {
 int d0,d1,d2;
 __asm__ __volatile("pushl $0x10\n\t"
@@ -29,90 +39,18 @@ __asm__ __volatile("pushl $0x10\n\t"
 	"movsl\n\t"
 	"pop %%es"
 	:"=&c" (d0), "=&S" (d1), "=&D" (d2)
-	:"0" (BLOCK_SIZE/4),"1" (from),"2" (to)
+	:"0" (size/4),"1" (from),"2" (to)
 	:"memory");
 }
 
-/*
- * read_head() reads blocks 1-6 (not 0). Block 0 has already been
- * read for header information.
- */
-int read_head(struct m_inode * inode,int blocks)
+typedef struct
 {
-	struct buffer_head * bh;
-	int count;
+	unsigned long b_entry;
+	unsigned long b_size;				//file size
+}bin_section;
 
-	if (blocks>6)
-		blocks=6;
-	for(count = 0 ; count<blocks ; count++) {
-		if (!inode->i_zone[count+1])
-			continue;
-		if (!(bh=bread(inode->i_dev,inode->i_zone[count+1])))
-			return -1;
-		cp_block(bh->b_data,count*BLOCK_SIZE);
-		brelse(bh);
-	}
-	return 0;
-}
 
-int read_ind(int dev,int ind,long size,unsigned long offset)
-{
-	struct buffer_head * ih, * bh;
-	unsigned short * table,block;
-
-	if (size<=0)
-		panic("size<=0 in read_ind");
-	if (size>512*BLOCK_SIZE)
-		size=512*BLOCK_SIZE;
-	if (!ind)
-		return 0;
-	if (!(ih=bread(dev,ind)))
-		return -1;
-	table = (unsigned short *) ih->b_data;
-	while (size>0) {
-		if ((block=*(table++))) {
-			if (!(bh=bread(dev,block))) {
-				brelse(ih);
-				return -1;
-			} else {
-				cp_block(bh->b_data,offset);
-				brelse(bh);
-			}
-		}
-		size -= BLOCK_SIZE;
-		offset += BLOCK_SIZE;
-	}
-	brelse(ih);
-	return 0;
-}
-
-/*
- * read_area() reads an area into %fs:mem.
- */
-int read_area(struct m_inode * inode,long size)
-{
-	struct buffer_head * dind;
-	unsigned short * table;
-	int i,count;
-
-	if ((i=read_head(inode,(size+BLOCK_SIZE-1)/BLOCK_SIZE)) ||
-	    (size -= BLOCK_SIZE*6)<=0)
-		return i;
-	if ((i=read_ind(inode->i_dev,inode->i_zone[7],size,BLOCK_SIZE*6)) ||
-	    (size -= BLOCK_SIZE*512)<=0)
-		return i;
-	if (!(i=inode->i_zone[8]))
-		return 0;
-	if (!(dind = bread(inode->i_dev,i)))
-		return -1;
-	table = (unsigned short *) dind->b_data;
-	for(count=0 ; count<512 ; count++)
-		if ((i=read_ind(inode->i_dev,*(table++),size,
-		    BLOCK_SIZE*(518+count))) || (size -= BLOCK_SIZE*512)<=0)
-			return i;
-	panic("Impossibly long executable");
-	return -1;
-}
+#include <string.h>
 
 /*
  * create_tables() parses the env- and arg-strings in new user
@@ -129,8 +67,8 @@ static unsigned long * create_tables(char * p,int argc,int envc)
 	envp = sp;
 	sp -= argc+1;
 	argv = sp;
-	put_fs_long((unsigned long)envp,--sp);
-	put_fs_long((unsigned long)argv,--sp);
+	//put_fs_long((unsigned long)envp,--sp);
+	//put_fs_long((unsigned long)argv,--sp);
 	put_fs_long((unsigned long)argc,--sp);
 	while (argc-->0) {
 		put_fs_long((unsigned long) p,argv++);
@@ -223,6 +161,222 @@ static unsigned long change_ldt(unsigned long text_size,unsigned long * page)
 }
 
 /*
+ * return 1 if ex if a valid elf executable
+ * */
+int is_valid_elf(Elf32_Ehdr* ex)
+{
+	if (ex->e_ident[EI_MAG0]!=ELFMAG0 || ex->e_ident[EI_MAG1]!=ELFMAG1 ||
+		ex->e_ident[EI_MAG2]!=ELFMAG2 || ex->e_ident[EI_MAG3]!=ELFMAG3){
+		printk("not elf format\n");
+		return 0;	/*not elf format */
+	}
+
+	if (ex->e_type != ET_EXEC || ex->e_machine != EM_386){
+		printk("bad elf binary\n");
+		return 0;
+	}
+
+	return 1;
+}
+
+/*
+ * bread(dev,ind) is an array of block index
+ * So we have to get from this array our wanted index ( variable block)
+ * */
+struct buffer_head* read_file_block_ind(int dev,int ind,int block_num)
+{
+	struct buffer_head * bh=NULL,*ih;
+	unsigned short block;
+
+	if (!(ih=bread(dev,ind)))
+	{
+		printk("bad block tab\n");
+		return NULL;
+	}
+
+	if ((block = *((unsigned short *) (ih->b_data) + block_num))){
+		if (!(bh=bread(dev,block))) {
+			brelse(ih);
+			printk("bad block file\n");
+			return NULL;
+		}
+	}
+
+
+	brelse(ih);
+	return bh;
+}
+
+/*
+ * if block_num=5, read file at position 5*1024.
+ * this work only for minix 1 fs 
+ */
+struct buffer_head* read_file_block(struct m_inode * inode,int block_num)
+{
+	struct buffer_head * dind;
+	int i;
+	unsigned short table;
+
+	 /* 7 1st block can be read directly */
+	if (block_num<=6)
+	{
+		return bread(inode->i_dev,inode->i_zone[block_num]);
+	}
+
+	block_num-=7;
+
+	if (block_num<512)
+	{
+		/* read block at i_zone[7] is an array of block index */
+		return read_file_block_ind(inode->i_dev,inode->i_zone[7],block_num);
+	}
+
+	block_num-=512;
+
+	if (block_num>512*512)
+	{
+		panic("Impossibly long executable");
+		return NULL;	//just to avoid warning compilation
+	}
+
+	/* i_zone[8] => array of array block index */
+	if (!(i=inode->i_zone[8]))
+		return NULL;
+	if (!(dind = bread(inode->i_dev,i)))
+		return NULL;
+	
+	table = *((unsigned short *) dind->b_data+(block_num/512));
+	brelse(dind);
+	if (block_num>=512)
+		block_num-=(block_num-1)*512;
+	
+	return read_file_block_ind(inode->i_dev,table,block_num);
+}
+
+
+/*  
+ *  read an area into %fs:mem.
+ */
+int copy_section(struct m_inode * inode,Elf32_Off from, Elf32_Addr dest,Elf32_Word size)
+{
+	struct buffer_head * bh;
+	int block_num=from/BLOCK_SIZE;
+	int block_offset;			//only for 1st block
+	int cp_size;				
+
+	//read fist block
+	block_offset=from%BLOCK_SIZE;
+	bh=read_file_block(inode,block_num);
+	if (!bh) return -1;
+	cp_size=(size<BLOCK_SIZE-block_offset)?size:BLOCK_SIZE-block_offset;
+	//note we add 3 to size to get it aligned to word boundary
+	cp_block(bh->b_data+block_offset,(void*)dest,cp_size+3);
+	brelse(bh);
+	dest+=cp_size;
+	size-=cp_size;
+	block_num++;
+
+	//read others blocks
+	while(size)
+	{
+		bh=read_file_block(inode,block_num);
+		if (!bh) return -1;
+		cp_size=(size<BLOCK_SIZE)?size:BLOCK_SIZE;
+		cp_block(bh->b_data,(void*)dest,cp_size+3);
+		block_num++;
+		size-=cp_size;
+		dest+=cp_size;
+		brelse(bh);
+	};
+
+	return 0;
+}
+
+inline int create_bss_section(Elf32_Addr dest,Elf32_Word size)
+{
+	while (size--)
+		put_fs_byte(0,(char *)dest++);
+	return 0;
+}
+
+/*
+ * in linux 0.01 only a.out binary format was supported
+ * Today it's hard to compile some programs (like bach) in a.out format
+ * So this version of linux 0.01 support elf binary.
+ * nb : there is no support of shared library !
+ */
+int load_elf_binary(struct m_inode *inode, struct buffer_head* bh,
+					 bin_section* bs)
+{
+	Elf32_Ehdr ex;
+	Elf32_Shdr sect;
+	long nsect;
+	int lb=0;
+	struct buffer_head* bht=NULL;
+
+	ex = *((Elf32_Ehdr *) bh->b_data);	/* read exec-header */
+
+	/* check header */
+	if (!is_valid_elf(&ex)) {
+		return -1;
+	}
+
+	bs->b_entry=ex.e_entry;
+	nsect=ex.e_shnum;
+	bs->b_size=ex.e_ehsize+nsect*ex.e_shentsize;
+	
+	if (nsect<=1){
+		printk("bad nb of sections %d\n",nsect);
+		return -1;
+	}
+	
+	while(nsect--){
+	
+		/* load block where is our table section*/
+		if ((ex.e_shoff + nsect * ex.e_shentsize)/BLOCK_SIZE != lb)
+		{
+			printk("");	// gcc  bug : removing this line = gcc not happy !!!
+			lb = (ex.e_shoff + nsect * ex.e_shentsize)/BLOCK_SIZE;
+			if (bht) brelse(bht);
+			bht=read_file_block(inode,lb);
+			if (!bht) return -1;
+		}
+
+		/* copy this section fo %fs:mem */
+		sect=*((Elf32_Shdr *)(bht->b_data + (ex.e_shoff + 
+				nsect * ex.e_shentsize)%BLOCK_SIZE ));
+	
+		if (!sect.sh_size || !sect.sh_addr) continue;
+		
+		switch(sect.sh_type)
+		{
+			case SHT_PROGBITS:
+				if (copy_section(inode,sect.sh_offset,sect.sh_addr,
+					sect.sh_size))
+				{
+					if (bht) brelse(bht);
+					return -1;
+				}
+				break;
+			
+			case SHT_NOBITS:	  
+				create_bss_section(sect.sh_addr,sect.sh_size);
+				break;
+
+			default:
+			continue;	  
+		}
+
+		/* find binary size */
+		if (bs->b_size<sect.sh_addr + sect.sh_size)
+			bs->b_size=sect.sh_addr + sect.sh_size;	
+	};
+
+	if (bht) brelse(bht);
+	return 0;
+}
+
+/*
  * 'do_execve()' executes a new program.
  */
 int do_execve(unsigned long * eip,long tmp,char * filename,
@@ -230,10 +384,10 @@ int do_execve(unsigned long * eip,long tmp,char * filename,
 {
 	struct m_inode * inode;
 	struct buffer_head * bh;
-	struct exec ex;
 	unsigned long page[MAX_ARG_PAGES];
 	int i,argc,envc;
 	unsigned long p;
+	bin_section bs;
 
 	if ((0xffff & eip[1]) != 0x000f)
 		panic("execve called from supervisor mode");
@@ -241,7 +395,7 @@ int do_execve(unsigned long * eip,long tmp,char * filename,
 		page[i]=0;
 	if (!(inode=namei(filename)))		/* get executables inode */
 		return -ENOENT;
-	if (!S_ISREG(inode->i_mode)) {	/* must be regular file */
+	if (!S_ISREG(inode->i_mode)) {		/* must be regular file */
 		iput(inode);
 		return -EACCES;
 	}
@@ -261,16 +415,7 @@ int do_execve(unsigned long * eip,long tmp,char * filename,
 		iput(inode);
 		return -EACCES;
 	}
-	ex = *((struct exec *) bh->b_data);	/* read exec-header */
-	brelse(bh);
-	if (N_MAGIC(ex) != ZMAGIC || ex.a_trsize || ex.a_drsize ||
-		ex.a_text+ex.a_data+ex.a_bss>0x3000000 ||
-		inode->i_size < ex.a_text+ex.a_data+ex.a_syms+N_TXTOFF(ex)) {
-		iput(inode);
-		return -ENOEXEC;
-	}
-	if (N_TXTOFF(ex) != BLOCK_SIZE)
-		panic("N_TXTOFF != BLOCK_SIZE. See a.out.h.");
+
 	argc = count(argv);
 	envc = count(envp);
 	p = copy_strings(envc,envp,page,PAGE_SIZE*MAX_ARG_PAGES);
@@ -288,25 +433,34 @@ int do_execve(unsigned long * eip,long tmp,char * filename,
 		if ((current->close_on_exec>>i)&1)
 			sys_close(i);
 	current->close_on_exec = 0;
+
 	free_page_tables(get_base(current->ldt[1]),get_limit(0x0f));
 	free_page_tables(get_base(current->ldt[2]),get_limit(0x17));
+	
+	if (load_elf_binary(inode,bh,&bs)){
+		brelse(bh);
+		iput(inode);
+		return -EACCES;
+	}
+	brelse(bh);
+
 	if (last_task_used_math == current)
 		last_task_used_math = NULL;
 	current->used_math = 0;
-	p += change_ldt(ex.a_text,page)-MAX_ARG_PAGES*PAGE_SIZE;
+	p += change_ldt(bs.b_size,page)-MAX_ARG_PAGES*PAGE_SIZE;
 	p = (unsigned long) create_tables((char *)p,argc,envc);
-	current->brk = ex.a_bss +
-		(current->end_data = ex.a_data +
-		(current->end_code = ex.a_text));
+	current->brk = bs.b_size;
+	current->end_data = bs.b_size;
+	current->end_code = bs.b_size;
 	current->start_stack = p & 0xfffff000;
-	i = read_area(inode,ex.a_text+ex.a_data);
 	iput(inode);
-	if (i<0)
-		sys_exit(-1);
-	i = ex.a_text+ex.a_data;
+
+	i = bs.b_size;
 	while (i&0xfff)
 		put_fs_byte(0,(char *) (i++));
-	eip[0] = ex.a_entry;		/* eip, magic happens :-) */
-	eip[3] = p;			/* stack pointer */
+	
+	eip[0] = bs.b_entry;		/* eip, magic happens :-) */
+	eip[3] = p;					/* stack pointer */
+
 	return 0;
 }

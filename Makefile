@@ -61,8 +61,8 @@ lib/lib.a:
 	(cd lib; make)
 
 boot/boot:	boot/boot.s tools/system
-	(echo -n "SYSSIZE = (";ls -l tools/system | grep system \
-		| cut -c31-37 | tr '\012' ' '; echo "+ 15 ) / 16") > tmp.s
+	(echo -n "SYSSIZE = (";stat -c%s tools/system \
+		| tr '\012' ' '; echo "+ 15 ) / 16") > tmp.s	
 	cat boot/boot.s >> tmp.s
 	$(AS86) -o boot/boot.o tmp.s
 	rm -f tmp.s

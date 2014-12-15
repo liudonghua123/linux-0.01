@@ -2,19 +2,63 @@
 #define _SYS_STAT_H
 
 #include <sys/types.h>
+#include <stdint.h>
 
 struct stat {
-	dev_t	st_dev;
-	ino_t	st_ino;
-	umode_t	st_mode;
-	nlink_t	st_nlink;
-	uid_t	st_uid;
-	gid_t	st_gid;
-	dev_t	st_rdev;
-	off_t	st_size;
-	time_t	st_atime;
-	time_t	st_mtime;
-	time_t	st_ctime;
+	uint16_t	st_dev;
+	uint16_t	__pad1;
+	unsigned long	st_ino;
+	uint16_t	st_mode;
+	uint16_t	st_nlink;
+	uint16_t	st_uid;
+	uint16_t	st_gid;
+	uint16_t	st_rdev;
+	uint16_t	__pad2;
+	unsigned long	st_size;
+	unsigned long	st_blksize;
+	unsigned long	st_blocks;
+	time_t		st_atime;
+	unsigned long	__unused1;
+	time_t		st_mtime;
+	unsigned long	__unused2;
+	time_t		st_ctime;
+	unsigned long	__unused3;
+	unsigned long	__unused4;
+	unsigned long	__unused5;
+};
+
+struct stat64 {
+	uint16_t	st_dev;
+	unsigned char	__pad0[10];
+
+#define STAT64_HAS_BROKEN_ST_INO	1
+	unsigned long	__st_ino;
+
+	uint32_t	st_mode;
+	uint32_t	st_nlink;
+
+	unsigned long	st_uid;
+	unsigned long	st_gid;
+
+	uint16_t	st_rdev;
+	unsigned char	__pad3[10];
+
+__extension__	long long	st_size __attribute__((__packed__));
+	unsigned long	st_blksize;
+
+	unsigned long	st_blocks;	/* Number 512-byte blocks allocated. */
+	unsigned long	__pad4;		/* future possible st_blocks high bits */
+
+	time_t		st_atime;
+	unsigned long	__pad5;
+
+	time_t		st_mtime;
+	unsigned long	__pad6;
+
+	time_t		st_ctime;
+	unsigned long	__pad7;		/* will be high 32 bits of ctime someday */
+
+__extension__	unsigned long long	st_ino __attribute__((__packed__));
 };
 
 #define S_IFMT  00170000
@@ -49,10 +93,10 @@ struct stat {
 #define S_IXOTH 00001
 
 extern int chmod(const char *_path, mode_t mode);
-extern int fstat(int fildes, struct stat *stat_buf);
+extern int fstat64(int fildes, struct stat64 *stat_buf);
 extern int mkdir(const char *_path, mode_t mode);
 extern int mkfifo(const char *_path, mode_t mode);
-extern int stat(const char *filename, struct stat *stat_buf);
+extern int stat64(const char *filename, struct stat64 *stat_buf);
 extern mode_t umask(mode_t mask);
 
 #endif

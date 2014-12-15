@@ -45,7 +45,7 @@ signal	= 12
 restorer = 16		# address of info-restorer
 sig_fn	= 20		# table of 32 signal addresses
 
-nr_system_calls = 67
+nr_system_calls = 319
 
 .globl system_call,sys_fork,timer_interrupt,hd_interrupt,sys_execve
 
@@ -72,6 +72,14 @@ system_call:
 	mov %dx,%es
 	movl $0x17,%edx		# fs points to local data space
 	mov %dx,%fs
+
+	movl sys_call_table(,%eax,4),%edx	# if sys_null
+	cmpl $sys_null,%edx					# then the syscall is not
+	jne 1f								# implemented.
+	popl  %edx							# 1st argument is syscall nr
+	pushl %eax
+1:
+
 	call *sys_call_table(,%eax,4)
 	pushl %eax
 	movl current,%eax

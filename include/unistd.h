@@ -54,6 +54,7 @@
 #include <sys/times.h>
 #include <sys/utsname.h>
 #include <utime.h>
+#include <dirent.h>
 
 #ifdef __LIBRARY__
 
@@ -75,7 +76,7 @@
 #define __NR_chmod	15
 #define __NR_chown	16
 #define __NR_break	17
-#define __NR_stat	18
+#define __NR_oldstat	18
 #define __NR_lseek	19
 #define __NR_getpid	20
 #define __NR_mount	21
@@ -85,7 +86,7 @@
 #define __NR_stime	25
 #define __NR_ptrace	26
 #define __NR_alarm	27
-#define __NR_fstat	28
+#define __NR_oldfstat	28
 #define __NR_pause	29
 #define __NR_utime	30
 #define __NR_stty	31
@@ -116,14 +117,24 @@
 #define __NR_mpx	56
 #define __NR_setpgid	57
 #define __NR_ulimit	58
-#define __NR_uname	59
+#define __NR_oldolduname 59
 #define __NR_umask	60
 #define __NR_chroot	61
 #define __NR_ustat	62
 #define __NR_dup2	63
 #define __NR_getppid	64
 #define __NR_getpgrp	65
-#define __NR_setsid	66
+#define __NR_setsid		66
+#define __NR_stat		106
+#define __NR_lstat		107
+#define __NR_fstat		108
+#define __NR_uname		122
+#define __NR_getdents	141
+#define __NR_stat64		195
+#define __NR_ltat64		196
+#define __NR_fstat64	197
+#define __NR_getdents64	220
+#define __NR_fcntl64	221
 
 #define _syscall0(type,name) \
 type name(void) \
@@ -223,8 +234,8 @@ int setpgid(pid_t pid,pid_t pgid);
 int setuid(uid_t uid);
 int setgid(gid_t gid);
 void (*signal(int sig, void (*fn)(int)))(int);
-int stat(const char * filename, struct stat * stat_buf);
-int fstat(int fildes, struct stat * stat_buf);
+int stat64(const char * filename, struct stat64 * stat_buf);
+int fstat64(int fildes, struct stat64 * stat_buf);
 int stime(time_t * tptr);
 //int sync(void);
 time_t time(time_t * tloc);
@@ -243,5 +254,7 @@ int dup2(int oldfd, int newfd);
 int getppid(void);
 pid_t getpgrp(void);
 pid_t setsid(void);
+int getdents(unsigned int fd, struct dirent *dirp, unsigned int count);
+int getdents64(unsigned int fd, struct dirent64 *dirp, unsigned int count);
 
 #endif

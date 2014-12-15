@@ -193,10 +193,17 @@ int sys_setsid(void)
 	return current->pgrp;
 }
 
+int sys_oldolduname(void* v)
+{
+	printk("calling obsolete system call oldolduname\n");
+	return -ENOSYS;
+//	return (0);
+}
+
 int sys_uname(struct utsname * name)
 {
 	static struct utsname thisname = {
-		"linux .0","nodename","release ","version ","machine "
+		"linux 0.01-3.x","nodename","release ","3.x","i386"
 	};
 	int i;
 
@@ -214,3 +221,17 @@ int sys_umask(int mask)
 	current->umask = mask & 0777;
 	return (old);
 }
+
+int sys_null(int nr)
+{
+	static int prev_nr=-2;
+	if (nr==174 || nr==175) return -ENOSYS;
+
+	if (prev_nr!=nr) 
+	{
+		prev_nr=nr;
+//		printk("system call num %d not available\n",nr);
+	}
+	return -ENOSYS;
+}
+

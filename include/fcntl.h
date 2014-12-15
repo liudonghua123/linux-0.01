@@ -28,6 +28,9 @@
 #define F_GETLK		5	/* not implemented */
 #define F_SETLK		6
 #define F_SETLKW	7
+#define F_GETLK64	12
+#define F_SETLK64	13
+#define F_SETLKW64	14
 
 /* for F_[GET|SET]FL */
 #define FD_CLOEXEC	1	/* actually anything with low bit set goes */
